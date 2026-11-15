@@ -2,8 +2,9 @@
 Calendrier lunaire : jour lunaire à partir d'une photo de la lune.
 
 Utilisation :
-    python lune.py images/ma_photo.jpg               # lune croissante (par défaut)
-    python lune.py images/ma_photo.jpg decroissante  # lune décroissante
+    python lune.py images/ma_photo.jpg               # croissante ou décroissante détectée automatiquement
+    python lune.py images/ma_photo.jpg croissante    # on impose : lune croissante
+    python lune.py images/ma_photo.jpg decroissante  # on impose : lune décroissante
 
 Ou modifie CHEMIN et CROISSANTE ci-dessous et lance simplement : python lune.py
 
@@ -23,8 +24,8 @@ from skimage import color, filters, measure, morphology, segmentation
 # ----------------------------------------------------------------------------
 # Paramètres
 # ----------------------------------------------------------------------------
-CHEMIN = "images/moon.7041.jpg"
-CROISSANTE = True       # True : lune croissante (avant la pleine lune) | False : décroissante
+CHEMIN = "images/nom_de_ta_photo.jpg"
+CROISSANTE = None       # None : détection automatique | True : croissante | False : décroissante
 PERIODE = 29.53         # durée du mois lunaire (jours)
 
 
@@ -99,6 +100,14 @@ def estimer_disque(masque):
     return cx, cy, R
 
 
+def cote_eclaire(masque, cx):
+    # Le centre de gravité de la zone éclairée est du côté éclairé par rapport au centre du disque.
+    # Hémisphère nord, photo à peu près droite : éclairée à droite = croissante, à gauche = décroissante.
+    # Moins fiable si la photo est très inclinée (zone éclairée en haut ou en bas) ou très près de la pleine lune.
+    _, x = np.nonzero(masque)
+    return x.mean() > cx
+
+
 def age_lunaire(f, croissante):
     # f = (1 - cos(phi)) / 2  avec  phi = 2*pi * age / PERIODE
     phi = np.arccos(1 - 2 * f)
@@ -132,6 +141,10 @@ def main(chemin, croissante):
 
     cx, cy, R = estimer_disque(masque)                      # étape 3
     f = min(1.0, masque.sum() / (np.pi * R**2))
+    if croissante is None:                                  # détection automatique du sens
+        croissante = cote_eclaire(masque, cx)
+        cote = "à droite" if croissante else "à gauche"
+        print(f"Sens détecté      : {'croissante' if croissante else 'décroissante'} (zone éclairée {cote})")
     age = age_lunaire(f, croissante)
 
     print(f"Fraction éclairée : {100 * f:.1f} %")
@@ -142,5 +155,10 @@ def main(chemin, croissante):
 
 if __name__ == "__main__":
     chemin = sys.argv[1] if len(sys.argv) > 1 else CHEMIN
-    croissante = (sys.argv[2].lower() != "decroissante") if len(sys.argv) > 2 else CROISSANTE
+    croissante = CROISSANTE
+    if len(sys.argv) > 2:
+        options = {"auto": None, "croissante": True, "decroissante": False}
+        if sys.argv[2].lower() not in options:
+            sys.exit("Deuxième argument possible : auto, croissante ou decroissante")
+        croissante = options[sys.argv[2].lower()]
     main(chemin, croissante)
