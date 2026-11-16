@@ -47,6 +47,18 @@ def filtrer(I):
     # (3x3 et pas plus : un noyau plus grand efface les croissants très fins)
     return signal.medfilt2d(I, kernel_size=3)
 
+def evaluer_nettete_fft(image):
+    # Utilisation de la FFT pour évaluer la présence de hautes fréquences
+    f = np.fft.fft2(image)
+    fshift = np.fft.fftshift(f)
+    magnitude_spectrum = 20 * np.log(np.abs(fshift) + 1)
+    
+    # On calcule la moyenne des hautes fréquences (les bords du spectre)
+    h, w = magnitude_spectrum.shape
+    haute_freq = magnitude_spectrum[0:h//4, :] # Quart supérieur (hautes fréquences y)
+    
+    score_nettete = np.mean(haute_freq)
+    return score_nettete
 
 # ----------------------------------------------------------------------------
 # Étape 2 : segmentation de la lune
@@ -135,21 +147,32 @@ def afficher(J, masque, cx, cy, R, f, age):
 # ----------------------------------------------------------------------------
 def main(chemin, croissante):
     I = charger(chemin)                                     # étape 1
+    
+    # ---  Analyse FFT de la netteté ---
+    score_nettete = evaluer_nettete_fft(I)
+    print(f"Analyse FFT       : Score de netteté = {score_nettete:.2f}")
+    if score_nettete < 10.0: # Seuil à ajuster selon les tests
+        print("Attention         : L'image semble très floue, le résultat pourrait être imprécis.")
+    
+
     J = filtrer(I)
 
     masque = segmenter(J)                                   # étape 2
 
     cx, cy, R = estimer_disque(masque)                      # étape 3
     f = min(1.0, masque.sum() / (np.pi * R**2))
+    
     if croissante is None:                                  # détection automatique du sens
         croissante = cote_eclaire(masque, cx)
         cote = "à droite" if croissante else "à gauche"
         print(f"Sens détecté      : {'croissante' if croissante else 'décroissante'} (zone éclairée {cote})")
+        
     age = age_lunaire(f, croissante)
 
     print(f"Fraction éclairée : {100 * f:.1f} %")
     print(f"Âge de la lune    : {age:.1f} jours")
     print(f"Jour lunaire      : {int(age) + 1}")
+    
     afficher(J, masque, cx, cy, R, f, age)
 
 
